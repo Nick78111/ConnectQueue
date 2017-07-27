@@ -23,10 +23,9 @@ Queue.PlayerCount = 0
 Queue.Priority = {}
 Queue.Connecting = {}
 
-local debug = GetConvar("sv_debugqueue", "true") == "true" and true or false
-local displayQueue = GetConvar("sv_displayqueue", "true") == "true" and true or false
-local initHostName = GetConvar("sv_hostname")
-local maxPlayers = GetConvarInt("sv_maxclients", 30)
+local debug = false
+local displayQueue = false
+local initHostName = false
 
 local tostring = tostring
 local tonumber = tonumber
@@ -255,6 +254,11 @@ function RemovePriority(id)
 end
 
 local function playerConnect(name, setKickReason, deferrals)
+    maxPlayers = GetConvarInt("sv_maxclients", 30)
+    debug = GetConvar("sv_debugqueue", "true") == "true" and true or false
+    displayQueue = GetConvar("sv_displayqueue", "true") == "true" and true or false
+    initHostName = not initHostName and GetConvar("sv_hostname") or initHostName
+
     local src = source
     local ids = Queue:GetIds(src)
     local connectTime = os_time()
@@ -430,7 +434,7 @@ local function checkTimeOuts()
         local qCount = Queue:GetSize()
 
         -- show queue count in server name
-        if displayQueue then SetConvar("sv_hostname", (qCount > 0 and "[" .. tostring(qCount) .. "] " or "") .. initHostName) end
+        if displayQueue and initHostName then SetConvar("sv_hostname", (qCount > 0 and "[" .. tostring(qCount) .. "] " or "") .. initHostName) end
 
         SetTimeout(1000, checkTimeOuts)
     end)
