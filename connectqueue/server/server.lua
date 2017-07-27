@@ -520,18 +520,18 @@ AddEventHandler("queue:playerJoinQueue", function(src, setKickReason)
     CancelEvent()
 end)
 
-exports.queueconnect:AddPriority("steam:110000#####", 50)
-exports.queueconnect:AddPriority("ip:127.0.0.1", 50)
-exports.queueconnect:AddPriority("STEAM_0:1:########", 50)
+exports.connectqueue:AddPriority("steam:110000#####", 50)
+exports.connectqueue:AddPriority("ip:127.0.0.1", 50)
+exports.connectqueue:AddPriority("STEAM_0:1:########", 50)
 
 local prioritize = {
     ["STEAM_0:1:########"] = 10,
     ["ip:127.0.0.1"] = 20,
     ["steam:110000#####"] = 100
 }
-exports.queueconnect:AddPriority(prioritize)
+exports.connectqueue:AddPriority(prioritize)
 
-exports.queueconnect:RemovePriority("STEAM_0:1:########")
+exports.connectqueue:RemovePriority("STEAM_0:1:########")
 
 set sv_debugqueue true
 set sv_displayqueue true
