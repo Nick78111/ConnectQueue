@@ -310,7 +310,7 @@ local function playerConnect(name, setKickReason, deferrals)
 
     Queue:AddToQueue(ids, connectTime, name, src)
 
-    if Queue:GetSize() <= 0 and Queue.PlayerCount < maxPlayers and Queue:ConnectingSize() < 5 then
+    if Queue:GetSize() <= 0 and Queue.PlayerCount + Queue:ConnectingSize() < maxPlayers and Queue:ConnectingSize() < 5 then
         -- let them in the server
        updateDeferral(nil, true)
        return
@@ -342,7 +342,7 @@ local function playerConnect(name, setKickReason, deferrals)
             -- prevent duplicating threads if player leaves and rejoins quickly
             if data.source ~= src then return end
 
-            if pos <= 1 and Queue.PlayerCount < maxPlayers and Queue:ConnectingSize() < 5 then
+            if pos <= 1 and Queue.PlayerCount + Queue:ConnectingSize() < maxPlayers and Queue:ConnectingSize() < 5 then
                 updateDeferral(Config.Language.joining)
 
                 Citizen.Wait(2000)
