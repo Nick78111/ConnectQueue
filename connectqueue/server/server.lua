@@ -160,7 +160,6 @@ end
 function Queue:IsInConnecting(ids, bySource)
     for k,v in ipairs(self.Connecting) do
         local _type = bySource and v.source or v.ids[1]
-
         return bySource and _type == ids or _type == ids[1]
     end
 
@@ -177,9 +176,8 @@ function Queue:AddToConnecting(ids)
     if self:IsInConnecting(ids) then self:RemoveFromConnecting(ids) end
 
     local pos, data = self:IsInQueue(ids, true)
-
     if not pos or pos > 1 then return false end
-
+    
     table_insert(self.Connecting, data)
     return true
 end
@@ -277,7 +275,6 @@ local function playerConnect(name, setKickReason, deferrals)
             end
 
             Queue:RemoveFromQueue(ids)
-
             Queue:DebugPrint(name .. "[" .. ids[1] .. "] is loading into the server")
 
             deferrals.done()
