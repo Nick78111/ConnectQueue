@@ -1,11 +1,11 @@
 # ConnectQueue
 Connection queue for FiveM
 
-#ConVars
+# ConVars
 	set sv_debugqueue true # prints debug messages to console
 	set sv_displayqueue true # shows queue count in the server name '[count] server name'
 
-#Events
+# Events
 	AddEventHandler("queue:playerJoinQueue", function(src, setKickReason)
 	    setKickReason("No, you can't join")
 	    CancelEvent()
