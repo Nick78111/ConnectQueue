@@ -225,6 +225,7 @@ function Queue:AddPriority(id, power)
                 self.Priority[k] = string_lower(v)
             else
                 self:DebugPrint("Error adding a priority id, invalid data passed")
+                return false
             end
         end
 
