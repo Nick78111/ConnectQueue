@@ -1,26 +1,17 @@
 local Config = {}
 ----------------------------------------------------------------------------------------------------------------------
--- Priority list takes SteamID 32's or HexID's, the integer is their power over other users
+-- Priority list can be any identifier. (hex steamid, steamid32, ip) Integer = power over other priorities
 Config.Priority = {
-    ["STEAM_0:1:########"] = 8,
-    ["STEAM_0:1:########"] = 150,
-    ["STEAM_0:1:########"] = 25,
-    ["STEAM_0:1:########"] = 100,
-    ["steam:11000010######"] = 75,
-    ["steam:11000010######"] = 80
+    ["STEAM_0:1:#######"] = 50,
+    ["steam:110000######"] = 25,
+    ["ip:127.0.0.0"] = 85
 }
-
--- will show debug information in the console
-Config.Debug = true
-
--- display queue count in server name Note: sv_hostname must be set before starting this resource in server.cfg
-Config.DisplayQueue = true
 
 -- easy localization
 Config.Language = {
     joining = "Joining...",
     connecting = "Connecting...",
-    steamid = "Error: We couldn't retrieve your SteamID, try restarting steam",
+    err = "Error: Couldn't retrieve any of your id's, try restarting.",
     pos = "You are %d/%d in queue"
 }
 -----------------------------------------------------------------------------------------------------------------------
@@ -29,23 +20,31 @@ local Queue = {}
 Queue.QueueList = {}
 Queue.PlayerList = {}
 Queue.PlayerCount = 0
-Queue.Priority = Config.Priority
+Queue.Priority = {}
 Queue.Connecting = {}
 
+local debug = GetConvar("sv_debugqueue", "true") == "true" and true or false
+local displayQueue = GetConvar("sv_displayqueue", "true") == "true" and true or false
 local initHostName = GetConvar("sv_hostname")
-Config.MaxPlayers = GetConvarInt("sv_maxclients")
+local maxPlayers = GetConvarInt("sv_maxclients", 30)
 
 local tostring = tostring
 local tonumber = tonumber
 local ipairs = ipairs
+local pairs = pairs
 local print = print
 local string_sub = string.sub
 local string_format = string.format
+local string_lower = string.lower
 local math_abs = math.abs
 local math_floor = math.floor
 local os_time = os.time
 local table_insert = table.insert
 local table_remove = table.remove
+
+for k,v in pairs(Config.Priority) do
+    Queue.Priority[string_lower(k)] = v
+end
 
 -- converts hex steamid to SteamID 32
 function Queue:HexIdToSteamId(hexId)
@@ -53,49 +52,67 @@ function Queue:HexIdToSteamId(hexId)
 	local steam64 = math_floor(tonumber(string_sub( cid, 2)))
 	local a = steam64 % 2 == 0 and 0 or 1
 	local b = math_floor(math_abs(6561197960265728 - steam64 - a) / 2)
-	local sid = "STEAM_0:"..a..":"..(a == 1 and b -1 or b)
+	local sid = "steam_0:"..a..":"..(a == 1 and b -1 or b)
     return sid
 end
 
 function Queue:DebugPrint(msg)
-    if Config.Debug then
+    if debug then
         msg = "QUEUE: " .. tostring(msg)
         print(msg)
     end
 end
 
-function Queue:IsInQueue(hexId, rtnTbl, bySource)
+function Queue:IsInQueue(ids, rtnTbl, bySource)
     for k,v in ipairs(self.QueueList) do
-        local _type = bySource and v.source or v.hexid
+        local inQueue = false
 
-        if _type == hexId then
+        if not bySource then
+            for i,j in ipairs(v.ids) do
+                if inQueue then break end
+
+                for q,e in ipairs(ids) do
+                    if e == j then inQueue = true break end
+                end
+            end
+        else
+            inQueue = ids == v.source
+        end
+
+        if inQueue then
             if rtnTbl then
                 return k, self.QueueList[k]
-            else
-                return true
             end
+
+            return true
         end
     end
 
     return false
 end
 
-function Queue:IsPriority(hexId)
-    if Queue.Priority[hexId] then return Queue.Priority[hexId]  ~= nil and Queue.Priority[hexId] or false end
+function Queue:IsPriority(ids)
+    for k,v in ipairs(ids) do
+        v = string_lower(v)
 
-    local steamid = Queue:HexIdToSteamId(hexId)
-    return Queue.Priority[steamid] ~= nil and Queue.Priority[steamid] or false
+        if string_sub(v, 1, 5) == "steam" and not self.Priority[v] then
+            local steamid = self:HexIdToSteamId(v)
+            if self.Priority[steamid] then return self.Priority[steamid] ~= nil and self.Priority[steamid] or false end
+        end
+
+        if self.Priority[v] then return self.Priority[v] ~= nil and self.Priority[v] or false end
+    end
 end
 
-function Queue:AddToQueue(hexId, connectTime, name, src)
-    if self:IsInQueue(hexId) then return end
+function Queue:AddToQueue(ids, connectTime, name, src)
+    if self:IsInQueue(ids) then return end
 
     local tmp = {
         source = src,
-        hexid = hexId,
+        ids = ids,
         name = name,
         firstconnect = connectTime,
-        priority = self:IsPriority(hexId) or (src == "debug" and math.random(0, 15))
+        priority = self:IsPriority(ids) or (src == "debug" and math.random(0, 15))
     }
 
     local _pos = false
@@ -112,7 +129,7 @@ function Queue:AddToQueue(hexId, connectTime, name, src)
             end
 
             if _pos then
-                self:DebugPrint(string_format("%s[%s] was prioritized and placed %d/%d in queue", tmp.name, hexId, _pos, queueCount))
+                self:DebugPrint(string_format("%s[%s] was prioritized and placed %d/%d in queue", tmp.name, ids[1], _pos, queueCount))
                 break
             end
         end
@@ -120,15 +137,15 @@ function Queue:AddToQueue(hexId, connectTime, name, src)
 
     if not _pos then
         _pos = self:GetSize() + 1
-        self:DebugPrint(string_format("%s[%s] was placed %d/%d in queue", tmp.name, hexId, _pos, queueCount))
+        self:DebugPrint(string_format("%s[%s] was placed %d/%d in queue", tmp.name, ids[1], _pos, queueCount))
     end
 
     table_insert(self.QueueList, _pos, tmp)
 end
 
-function Queue:RemoveFromQueue(hexId, bySource)
-    if self:IsInQueue(hexId, false, bySource) then
-        local pos, data = self:IsInQueue(hexId, true, bySource)
+function Queue:RemoveFromQueue(ids, bySource)
+    if self:IsInQueue(ids, false, bySource) then
+        local pos, data = self:IsInQueue(ids, true, bySource)
         table_remove(self.QueueList, pos)
     end
 end
@@ -137,37 +154,30 @@ function Queue:GetSize()
     return #self.QueueList
 end
 
-function Queue:GetConnectingSize()
-    local count = 0
-    
-    for k,v in pairs(self.Connecting) do
-        count = count + 1
-    end
-
-    return count
+function Queue:ConnectingSize()
+    return #self.Connecting
 end
 
-function Queue:IsInConnecting(hexId, bySource)
+function Queue:IsInConnecting(ids, bySource)
     for k,v in ipairs(self.Connecting) do
-        local _type = bySource and v.source or v.hexid
+        local _type = bySource and v.source or v.ids[1]
 
-        if _type == hexId then return true end
+        return bySource and _type == ids or _type == ids[1]
     end
 
     return false
 end
 
-function Queue:AddToConnecting(hexId)
-    if self:GetConnectingSize() >= 5 then return false end
-
-    if hexId == "debug" then
-        table_insert(self.Connecting, {source = hexId, hexid = hexId, name = hexId, firstconnect = hexId, priority = hexId})
+function Queue:AddToConnecting(ids)
+    if self:ConnectingSize() >= 5 then return false end
+    if ids[1] == "debug" then
+        table_insert(self.Connecting, {source = ids[1], ids = ids, name = ids[1], firstconnect = ids[1], priority = ids[1]})
         return true
     end
 
-    if self:IsInConnecting(hexId) then self:RemoveFromConnecting(hexId) end
+    if self:IsInConnecting(ids) then self:RemoveFromConnecting(ids) end
 
-    local pos, data = self:IsInQueue(hexId, true)
+    local pos, data = self:IsInQueue(ids, true)
 
     if not pos or pos > 1 then return false end
 
@@ -175,11 +185,23 @@ function Queue:AddToConnecting(hexId)
     return true
 end
 
-function Queue:RemoveFromConnecting(hexId, bySource)
+function Queue:RemoveFromConnecting(ids, bySource)
     for k,v in ipairs(self.Connecting) do
-        local _type = bySource and v.source or v.hexid
+        local inConnecting = false
 
-        if _type == hexId then
+        if not bySource then
+            for i,j in ipairs(v.ids) do
+                if inConnecting then break end
+
+                for q,e in ipairs(ids) do
+                    if e == j then inConnecting = true break end
+                end
+            end
+        else
+            inConnecting = ids == v.source
+        end
+
+        if inConnecting then
             table_remove(self.Connecting, k)
             return true
         end
@@ -188,38 +210,37 @@ function Queue:RemoveFromConnecting(hexId, bySource)
     return false
 end
 
-function Queue:GetId(src)
-    local hexId = GetPlayerIdentifiers(src)
-    hexId = (hexId and hexId[1]) and hexId[1] or false
-    return hexId
+function Queue:GetIds(src)
+    local ids = GetPlayerIdentifiers(src)
+    ids = (ids and ids[1]) and ids or {"ip:" .. GetPlayerEP(src)}
+    ids = ids ~= nil and ids or false
+    return ids
 end
 
--- id's can be either be hex id or 32 bit steamid, this will allow custom scripts to add priorities using other means... like grabbing them from a db.
--- can also take a table of steamid's and their power allowing you to call this event only once instead of in a loop for each individual.
 function Queue:AddPriority(id, power)
     if not id then return false end
 
     if type(id) == "table" then
         for k, v in pairs(id) do
             if k and type(k) == "string" and v and type(v) == "number" then
-                Queue.Priority[k] = v
+                self.Priority[k] = string_lower(v)
             else
-                Queue:DebugPrint("Error adding a priority id, invalid data passed")
+                self:DebugPrint("Error adding a priority id, invalid data passed")
             end
         end
 
         return true
     end
 
-    power = (power and type(power) == "number") and power or 50
-    Queue.Priority[id] = power
+    power = (power and type(power) == "number") and power or 10
+    self.Priority[string_lower(id)] = power
 
     return true
 end
 
 function Queue:RemovePriority(id)
     if not id then return false end
-    Queue.Priority[id] = nil
+    self.Priority[id] = nil
     return true
 end
 
@@ -235,22 +256,24 @@ end
 
 local function playerConnect(name, setKickReason, deferrals)
     local src = source
-    local hexId = Queue:GetId(src)
+    local ids = Queue:GetIds(src)
     local connectTime = os_time()
 
     deferrals.defer()
 
     local function updateDeferral(msg, letJoin)
         if letJoin then
-            local added = Queue:AddToConnecting(hexId)
+            local added = Queue:AddToConnecting(ids)
             if not added then
-                Queue:RemoveFromQueue(hexId)
-                Queue:RemoveFromConnecting(hexId)
+                Queue:RemoveFromQueue(ids)
+                Queue:RemoveFromConnecting(ids)
                 Queue:DebugPrint("Player could not be added to the connecting list")
                 return
             end
 
-            Queue:RemoveFromQueue(hexId)
+            Queue:RemoveFromQueue(ids)
+
+            Queue:DebugPrint(name .. "[" .. ids[1] .. "] is loading into the server")
 
             deferrals.done()
             return
@@ -264,28 +287,36 @@ local function playerConnect(name, setKickReason, deferrals)
     -- calling deferrals.done() too quickly was giving me problems
     Citizen.Wait(500)
 
-    if not hexId or hexId == "" then
+    if not ids then
         -- prevent joining
-        deferrals.done(Config.Language.steamid)
-        Queue:DebugPrint("Dropped " .. name .. ", couldn't retrieve their steamid")
+        deferrals.done(Config.Language.err)
+        Queue:DebugPrint("Dropped " .. name .. ", couldn't retrieve any of their id's")
         return
     end
 
-    -- this means leaving the connecting screen will remove you from queue, so don't leave it...
-    if Queue:IsInQueue(hexId) then
-        Queue:RemoveFromQueue(hexId)
-        Queue:DebugPrint(string_format("%s[%s] was removed from queue, they cancelled connecting and attempted to rejoin", name, hexId))
+    -- this will remove them from queue if they close the connecting screen
+    if Queue:IsInQueue(ids) then
+        Queue:RemoveFromQueue(ids)
+        Queue:DebugPrint(string_format("%s[%s] was removed from queue, they cancelled connecting and attempted to rejoin", name, ids))
     end
 
-    Queue:AddToQueue(hexId, connectTime, name, src)
+    local reason = "You were kicked from joining the queue"
+    local function setReason(msg)
+        reason = tostring(msg)
+    end
 
-    if Queue:GetSize() <= 0 and Queue.PlayerCount < Config.MaxPlayers and Queue:GetConnectingSize() < 5 then
+    TriggerEvent("queue:playerJoinQueue", src, setReason)
+    if WasEventCanceled() then deferrals.done(reason) return end
+
+    Queue:AddToQueue(ids, connectTime, name, src)
+
+    if Queue:GetSize() <= 0 and Queue.PlayerCount < maxPlayers and Queue:ConnectingSize() < 5 then
         -- let them in the server
        updateDeferral(nil, true)
        return
     end
 
-    local pos, data = Queue:IsInQueue(hexId, true)
+    local pos, data = Queue:IsInQueue(ids, true)
 
     deferrals.update(string_format(Config.Language.pos, pos, Queue:GetSize()))
 
@@ -303,7 +334,7 @@ local function playerConnect(name, setKickReason, deferrals)
             -- hopefully people will notice this and realize they don't have to keep reconnecting...
             for i = 1 , dotCount do dots = dots .. "." end
 
-            local pos, data = Queue:IsInQueue(hexId, true)
+            local pos, data = Queue:IsInQueue(ids, true)
 
             -- will return false if not in queue; timed out?
             if not pos then return end
@@ -311,7 +342,7 @@ local function playerConnect(name, setKickReason, deferrals)
             -- prevent duplicating threads if player leaves and rejoins quickly
             if data.source ~= src then return end
 
-            if pos <= 1 and Queue.PlayerCount < Config.MaxPlayers and Queue:GetConnectingSize() < 5 then
+            if pos <= 1 and Queue.PlayerCount < maxPlayers and Queue:ConnectingSize() < 5 then
                 updateDeferral(Config.Language.joining)
 
                 Citizen.Wait(2000)
@@ -332,13 +363,13 @@ AddEventHandler("playerConnecting", playerConnect)
 
 local function playerActivated()
     local src = source
-    local hexId = Queue:GetId(src)
+    local ids = Queue:GetIds(src)
 
     if not Queue.PlayerList[src] then
         Queue.PlayerCount = Queue.PlayerCount + 1
         Queue.PlayerList[src] = true
-        Queue:RemoveFromQueue(hexId)
-        Queue:RemoveFromConnecting(hexId)
+        Queue:RemoveFromQueue(ids)
+        Queue:RemoveFromConnecting(ids)
     end
 end
 
@@ -347,13 +378,13 @@ AddEventHandler("Queue:playerActivated", playerActivated)
 
 local function playerDropped()
     local src = source
-    local hexId = Queue:GetId(src)
+    local ids = Queue:GetIds(src)
 
     if Queue.PlayerList[src] then
         Queue.PlayerCount = Queue.PlayerCount - 1
         Queue.PlayerList[src] = nil
-        Queue:RemoveFromQueue(hexId)
-        Queue:RemoveFromConnecting(hexId)
+        Queue:RemoveFromQueue(ids)
+        Queue:RemoveFromConnecting(ids)
     end
 end
 
@@ -367,45 +398,39 @@ local function checkTimeOuts()
             local data = Queue.QueueList[i]
 
             -- check just incase there is invalid data
-            if not data.hexid or not data.name or not data.firstconnect or data.priority == nil or not data.source then
+            if not data.ids or not data.name or not data.firstconnect or data.priority == nil or not data.source then
                 table_remove(Queue.QueueList, i)
-                Queue:DebugPrint(tostring(data.name) .. "[" .. tostring(data.hexid) .. "] was removed from the queue because it had invalid data")
+                Queue:DebugPrint(tostring(data.name) .. "[" .. tostring(data.ids[1]) .. "] was removed from the queue because it had invalid data")
 
-            elseif (GetPlayerLastMsg(data.source) == 0 or GetPlayerLastMsg(data.source) >= 30000) and data.source ~= "debug" and os_time() - data.firstconnect > 5 then
+            elseif (GetPlayerLastMsg(data.source) == 0 or GetPlayerLastMsg(data.source) >= 25000) and data.source ~= "debug" and os_time() - data.firstconnect > 5 then
 
                 -- remove by source incase they rejoined and were duped in the queue somehow
                 Queue:RemoveFromQueue(data.source, true)
                 Queue:RemoveFromConnecting(data.source, true)
-                Queue:DebugPrint(data.name .. "[" .. data.hexid .. "] was removed from the queue because they timed out")
+                Queue:DebugPrint(data.name .. "[" .. data.ids[1] .. "] was removed from the queue because they timed out")
             else
                 i = i + 1
             end
         end
 
-        while i <= Queue:GetConnectingSize() do
+        local i = 1
+
+        while i <= Queue:ConnectingSize() do
             local data = Queue.Connecting[i]
-            if (GetPlayerLastMsg(data.source) == 0 or GetPlayerLastMsg(data.source) >= 30000) and data.source ~= "debug" and os_time() - data.firstconnect > 5 then
-                Queue:RemoveFromConnecting(data.source, true)
+
+            if (GetPlayerLastMsg(data.source) == 0 or GetPlayerLastMsg(data.source) >= 25000) and data.source ~= "debug" and os_time() - data.firstconnect > 5 then
                 Queue:RemoveFromQueue(data.source, true)
-                Queue:DebugPrint(data.name .. "[" .. data.hexid .. "] was removed from the connecting queue because they timed out")
+                Queue:RemoveFromConnecting(data.source, true)
+                Queue:DebugPrint(data.name .. "[" .. data.ids[1] .. "] was removed from the connecting queue because they timed out")
             else
                 i = i + 1
             end
         end
-
-        --[[ for k,v in pairs(Queue.List) do
-            local lstMsg = GetPlayerLastMsg(k)
-
-            if not lstMsg or lstMsg == 0 or lstMsg >= 120000 then
-                Queue.List[k] = nil
-                Queue.PlayerCount = Queue.PlayerCount - 1
-            end
-        end ]]
 
         local qCount = Queue:GetSize()
 
         -- show queue count in server name
-        if Config.DisplayQueue then SetConvar("sv_hostname", (qCount > 0 and "[" .. tostring(qCount) .. "] " or "") .. initHostName) end
+        if displayQueue then SetConvar("sv_hostname", (qCount > 0 and "[" .. tostring(qCount) .. "] " or "") .. initHostName) end
 
         SetTimeout(1000, checkTimeOuts)
     end)
@@ -413,13 +438,15 @@ end
 
 checkTimeOuts()
 
+
+-- debugging / testing commands
 local testAdds = 0
 
 AddEventHandler("rconCommand", function(command, args)
     -- adds a fake player to the queue for debugging purposes, this will freeze the queue
     if command == "addq" then
         print("==ADDED FAKE QUEUE==")
-        Queue:AddToQueue("steam:110000103fd1bb1"..testAdds, os_time(), "Fake Player", "debug")
+        Queue:AddToQueue({"steam:110000103fd1bb1"..testAdds}, os_time(), "Fake Player", "debug")
         testAdds = testAdds + 1
         CancelEvent()
 
@@ -434,14 +461,14 @@ AddEventHandler("rconCommand", function(command, args)
     elseif command == "printq" then
         print("==CURRENT QUEUE LIST==")
         for k,v in ipairs(Queue.QueueList) do
-            print(k .. ": [id: " .. v.source .. "] " .. v.name .. "[" .. v.hexid .. "] | Priority: " .. (tostring(v.priority and true or false)) .. " | Last Msg: " .. GetPlayerLastMsg(v.source))
+            print(k .. ": [src: " .. v.source .. "] " .. v.name .. "[" .. v.ids[1] .. "] | Priority: " .. (tostring(v.priority and true or false)) .. " | Last Msg: " .. GetPlayerLastMsg(v.source))
         end
         CancelEvent()
 
     -- adds a fake player to the connecting list
     elseif command == "addc" then
         print("==ADDED FAKE CONNECTING QUEUE==")
-        Queue:AddToConnecting("debug")
+        Queue:AddToConnecting({"debug"})
         CancelEvent()
 
     -- removes a player from the connecting list
@@ -455,8 +482,9 @@ AddEventHandler("rconCommand", function(command, args)
     elseif command == "printc" then
         print("==CURRENT CONNECTING LIST==")
         for k,v in ipairs(Queue.Connecting) do
-                print(k .. ": [id: " .. v.source .. "] " .. v.name .. "[" .. v.hexid .. "] | Priority: " .. (tostring(v.priority and true or false)) .. " | Last Msg: " .. GetPlayerLastMsg(v.source))
+            print(k .. ": [src: " .. v.source .. "] " .. v.name .. "[" .. v.ids[1] .. "] | Priority: " .. (tostring(v.priority and true or false)) .. " | Last Msg: " .. GetPlayerLastMsg(v.source))
         end
+        CancelEvent()
 
     -- prints a list of activated players
     elseif command == "printl" then
@@ -465,9 +493,10 @@ AddEventHandler("rconCommand", function(command, args)
         end
         CancelEvent()
 
+    -- prints a list of priority id's
     elseif command == "printp" then
         print("==CURRENT PRIORITY LIST==")
-        for k,v in pairs(Config.Priority) do
+        for k,v in pairs(Queue.Priority) do
             print(k .. ": " .. tostring(v))
         end
         CancelEvent()
@@ -475,10 +504,36 @@ AddEventHandler("rconCommand", function(command, args)
     -- prints the current player count
     elseif command == "printcount" then
         print("Player Count: " .. Queue.PlayerCount)
+        CancelEvent()
     end
 end)
 
 -- prevent duplicating queue count in server name
 AddEventHandler("onResourceStop", function(resource)
-    if Config.DisplayQueue and resource == GetCurrentResourceName() then SetConvar("sv_hostname", initHostName) end
+    if displayQueue and resource == GetCurrentResourceName() then SetConvar("sv_hostname", initHostName) end
 end)
+
+--[[
+
+AddEventHandler("queue:playerJoinQueue", function(src, setKickReason)
+    setKickReason("No, you can't join")
+    CancelEvent()
+end)
+
+exports.queueconnect:AddPriority("steam:110000#####", 50)
+exports.queueconnect:AddPriority("ip:127.0.0.1", 50)
+exports.queueconnect:AddPriority("STEAM_0:1:########", 50)
+
+local prioritize = {
+    ["STEAM_0:1:########"] = 10,
+    ["ip:127.0.0.1"] = 20,
+    ["steam:110000#####"] = 100
+}
+exports.queueconnect:AddPriority(prioritize)
+
+exports.queueconnect:RemovePriority("STEAM_0:1:########")
+
+set sv_debugqueue true
+set sv_displayqueue true
+
+ ]]
