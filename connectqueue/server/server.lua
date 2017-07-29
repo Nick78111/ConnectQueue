@@ -26,6 +26,7 @@ Queue.Connecting = {}
 local debug = false
 local displayQueue = false
 local initHostName = false
+local maxPlayers = 30
 
 local tostring = tostring
 local tonumber = tonumber
