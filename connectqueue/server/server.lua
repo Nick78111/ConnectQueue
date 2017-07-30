@@ -393,6 +393,22 @@ end
 
 AddEventHandler("playerDropped", playerDropped)
 
+function Queue:IsConnecting(ids)
+    local players = GetPlayers()
+    
+    for k,v in pairs(players) do
+        local tIds = self:GetIds(v)
+
+        for q,e in pairs(tIds) do
+            for j,l in pairs(ids) do
+                if e == l then return true end
+            end
+        end
+    end
+
+    return false
+end
+
 local function checkTimeOuts()
     Citizen.CreateThread(function()
         local i = 1
@@ -421,7 +437,7 @@ local function checkTimeOuts()
         while i <= Queue:ConnectingSize() do
             local data = Queue.Connecting[i]
 
-            if (GetPlayerLastMsg(data.source) == 0 or GetPlayerLastMsg(data.source) >= 25000) and data.source ~= "debug" and os_time() - data.firstconnect > 5 then
+            if not Queue:IsConnecting(data.ids) and data.source ~= "debug" and os_time() - data.firstconnect > 5 then
                 Queue:RemoveFromQueue(data.ids)
                 Queue:RemoveFromConnecting(data.ids)
                 Queue:DebugPrint(data.name .. "[" .. data.ids[1] .. "] was removed from the connecting queue because they timed out")
