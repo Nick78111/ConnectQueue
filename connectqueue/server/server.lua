@@ -396,11 +396,11 @@ AddEventHandler("playerDropped", playerDropped)
 function Queue:IsConnecting(ids)
     local players = GetPlayers()
     
-    for k,v in pairs(players) do
+    for k,v in ipairs(players) do
         local tIds = self:GetIds(v)
 
-        for q,e in pairs(tIds) do
-            for j,l in pairs(ids) do
+        for q,e in ipairs(tIds) do
+            for j,l in ipairs(ids) do
                 if e == l then return true end
             end
         end
@@ -523,7 +523,7 @@ AddEventHandler("rconCommand", function(command, args)
     -- prints the current player count
     elseif command == "printcount" then
         print("Player Count: " .. Queue.PlayerCount)
-        for k,v in pairs(GetPlayers()) do
+        for k,v in ipairs(GetPlayers()) do
             print(tostring(k) .. ": " .. tostring(v))
         end
         CancelEvent()
