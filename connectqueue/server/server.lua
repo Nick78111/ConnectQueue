@@ -422,8 +422,8 @@ local function checkTimeOuts()
             local data = Queue.Connecting[i]
 
             if (GetPlayerLastMsg(data.source) == 0 or GetPlayerLastMsg(data.source) >= 25000) and data.source ~= "debug" and os_time() - data.firstconnect > 5 then
-                Queue:RemoveFromQueue(data.source, true)
-                Queue:RemoveFromConnecting(data.source, true)
+                Queue:RemoveFromQueue(data.ids)
+                Queue:RemoveFromConnecting(data.ids)
                 Queue:DebugPrint(data.name .. "[" .. data.ids[1] .. "] was removed from the connecting queue because they timed out")
             else
                 i = i + 1
@@ -507,6 +507,9 @@ AddEventHandler("rconCommand", function(command, args)
     -- prints the current player count
     elseif command == "printcount" then
         print("Player Count: " .. Queue.PlayerCount)
+        for k,v in pairs(GetPlayers()) do
+            print(tostring(k) .. ": " .. tostring(v))
+        end
         CancelEvent()
     end
 end)
