@@ -22,6 +22,7 @@ Queue.PlayerList = {}
 Queue.PlayerCount = 0
 Queue.Priority = {}
 Queue.Connecting = {}
+Queue.Failure = {}
 
 local debug = false
 local displayQueue = false
@@ -49,10 +50,10 @@ end
 -- converts hex steamid to SteamID 32
 function Queue:HexIdToSteamId(hexId)
     local cid = math_floor(tonumber(string_sub(hexId, 7), 16))
-	local steam64 = math_floor(tonumber(string_sub( cid, 2)))
-	local a = steam64 % 2 == 0 and 0 or 1
-	local b = math_floor(math_abs(6561197960265728 - steam64 - a) / 2)
-	local sid = "steam_0:"..a..":"..(a == 1 and b -1 or b)
+    local steam64 = math_floor(tonumber(string_sub( cid, 2)))
+    local a = steam64 % 2 == 0 and 0 or 1
+    local b = math_floor(math_abs(6561197960265728 - steam64 - a) / 2)
+    local sid = "steam_0:"..a..":"..(a == 1 and b -1 or b)
     return sid
 end
 
@@ -178,7 +179,7 @@ function Queue:AddToConnecting(ids)
 
     local pos, data = self:IsInQueue(ids, true)
     if not pos or pos > 1 then return false end
-    
+
     table_insert(self.Connecting, data)
     return true
 end
@@ -315,8 +316,8 @@ local function playerConnect(name, setKickReason, deferrals)
 
     if Queue:GetSize() <= 0 and Queue.PlayerCount + Queue:ConnectingSize() < maxPlayers and Queue:ConnectingSize() < 5 then
         -- let them in the server
-       updateDeferral(nil, true)
-       return
+        updateDeferral(nil, true)
+        return
     end
 
     local pos, data = Queue:IsInQueue(ids, true)
@@ -393,20 +394,38 @@ end
 
 AddEventHandler("playerDropped", playerDropped)
 
-function Queue:IsConnecting(ids)
+function Queue:IsConnected(ids)
     local players = GetPlayers()
-    
+
     for k,v in ipairs(players) do
         local tIds = self:GetIds(v)
 
         for q,e in ipairs(tIds) do
             for j,l in ipairs(ids) do
-                if e == l then return true end
+                if e == l then
+                    return true
+                end
             end
         end
     end
 
     return false
+end
+
+function Queue:IsConnecting(ids)
+    local isConnected = self:IsConnected(ids)
+
+    if isConnected then
+        return true
+    end
+
+    if not Queue.Failure[ids[1]] then
+        Queue.Failure[ids[1]] = 0
+    end
+
+    Queue.Failure[ids[1]] = Queue.Failure[ids[1]] + 1
+
+    return Queue.Failure[ids[1]] < 12
 end
 
 local function checkTimeOuts()
@@ -421,7 +440,7 @@ local function checkTimeOuts()
                 table_remove(Queue.QueueList, i)
                 Queue:DebugPrint(tostring(data.name) .. "[" .. tostring(data.ids[1]) .. "] was removed from the queue because it had invalid data")
 
-            elseif (GetPlayerLastMsg(data.source) == 0 or GetPlayerLastMsg(data.source) >= 25000) and data.source ~= "debug" and os_time() - data.firstconnect > 5 then
+            elseif not Queue:IsConnecting(data.ids) and data.source ~= "debug" and os_time() - data.firstconnect > 5 then
 
                 -- remove by source incase they rejoined and were duped in the queue somehow
                 Queue:RemoveFromQueue(data.source, true)
@@ -469,14 +488,14 @@ AddEventHandler("rconCommand", function(command, args)
         testAdds = testAdds + 1
         CancelEvent()
 
-    -- removes targeted id from the queue
+        -- removes targeted id from the queue
     elseif command == "removeq" then
         if not args[1] then return end
         print("REMOVED " .. Queue.QueueList[tonumber(args[1])].name .. " FROM THE QUEUE")
         table_remove(Queue.QueueList, args[1])
         CancelEvent()
-    
-    -- print the current queue list
+
+        -- print the current queue list
     elseif command == "printq" then
         print("==CURRENT QUEUE LIST==")
         for k,v in ipairs(Queue.QueueList) do
@@ -484,20 +503,20 @@ AddEventHandler("rconCommand", function(command, args)
         end
         CancelEvent()
 
-    -- adds a fake player to the connecting list
+        -- adds a fake player to the connecting list
     elseif command == "addc" then
         print("==ADDED FAKE CONNECTING QUEUE==")
         Queue:AddToConnecting({"debug"})
         CancelEvent()
 
-    -- removes a player from the connecting list
+        -- removes a player from the connecting list
     elseif command == "removec" then
         print("==REMOVED FAKE CONNECTING QUEUE==")
         if not args[1] then return end
         table_remove(Queue.Connecting, args[1])
         CancelEvent()
 
-    -- prints a list of players that are connecting
+        -- prints a list of players that are connecting
     elseif command == "printc" then
         print("==CURRENT CONNECTING LIST==")
         for k,v in ipairs(Queue.Connecting) do
@@ -505,22 +524,22 @@ AddEventHandler("rconCommand", function(command, args)
         end
         CancelEvent()
 
-    -- prints a list of activated players
+        -- prints a list of activated players
     elseif command == "printl" then
         for k,v in pairs(Queue.PlayerList) do
             print(k .. ": " .. tostring(v))
         end
         CancelEvent()
 
-    -- prints a list of priority id's
+        -- prints a list of priority id's
     elseif command == "printp" then
         print("==CURRENT PRIORITY LIST==")
         for k,v in pairs(Queue.Priority) do
             print(k .. ": " .. tostring(v))
         end
         CancelEvent()
-    
-    -- prints the current player count
+
+        -- prints the current player count
     elseif command == "printcount" then
         print("Player Count: " .. Queue.PlayerCount)
         for k,v in ipairs(GetPlayers()) do
