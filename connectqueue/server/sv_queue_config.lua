@@ -10,7 +10,7 @@ Config.Priority = {
 }
 
 -- require people to run steam
-Config.RequireSteam = true
+Config.RequireSteam = false
 
 -- "whitelist" only server
 Config.PriorityOnly = false
