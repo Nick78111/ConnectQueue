@@ -42,6 +42,8 @@ local os_time = os.time
 local table_insert = table.insert
 local table_remove = table.remove
 
+Queue.InitHostName = Queue.InitHostName ~= "default FXServer" and Queue.InitHostName or false
+
 for id, power in pairs(Config.Priority) do
     Queue.Priority[string_lower(id)] = power
 end
@@ -633,7 +635,15 @@ Citizen.CreateThread(function()
         Queue.DisplayQueue = GetConvar("sv_displayqueue", "true") == "true" and true or false
 
         local qCount = Queue:GetSize()
-        if Queue.DisplayQueue and Queue.InitHostName then SetConvar("sv_hostname", (qCount > 0 and "[" .. tostring(qCount) .. "] " or "") .. Queue.InitHostName) end
+
+        if Queue.DisplayQueue then
+            if Queue.InitHostName then
+                SetConvar("sv_hostname", (qCount > 0 and "[" .. tostring(qCount) .. "] " or "") .. Queue.InitHostName)
+            else
+                Queue.InitHostName = GetConvar("sv_hostname")
+                Queue.InitHostName = Queue.InitHostName ~= "default FXServer" and Queue.InitHostName or false
+            end
+        end
     end
 end)
 
@@ -664,7 +674,7 @@ AddEventHandler("playerDropped", function()
 end)
 
 AddEventHandler("onResourceStop", function(resource)
-    if Queue.DisplayQueue and resource == GetCurrentResourceName() then SetConvar("sv_hostname", Queue.InitHostName) end
+    if Queue.DisplayQueue and Queue.InitHostName and resource == GetCurrentResourceName() then SetConvar("sv_hostname", Queue.InitHostName) end
     
     for k, data in ipairs(Queue.JoinCbs) do
         if data.resource == resource then
