@@ -15,7 +15,7 @@ Easy to use queue system for FiveM with:
 - Drop the folder inside your resources folder.
 - Add `start connectqueue` inside your server.cfg. - *Preferrably at the top*
 - Set convars to your liking.
-- Open `connectqueue/config.lua` and edit to your liking.
+- Open `connectqueue/server/sv_queue_config.lua` and edit to your liking.
 - Renaming the resource may cause problems.
 
 ## ConVars

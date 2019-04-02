@@ -48,6 +48,13 @@ for id, power in pairs(Config.Priority) do
     Queue.Priority[string_lower(id)] = power
 end
 
+function Queue:DebugPrint(msg)
+    if Queue.Debug then
+        msg = "^3QUEUE: ^0" .. tostring(msg) .. "^7"
+        print(msg)
+    end
+end
+
 function Queue:HexIdToSteamId(hexId)
     local cid = math_floor(tonumber(string_sub(hexId, 7), 16))
 	local steam64 = math_floor(tonumber(string_sub( cid, 2)))
@@ -67,15 +74,35 @@ function Queue:IsSteamRunning(src)
     return false
 end
 
-function Queue:DebugPrint(msg)
-    if Queue.Debug then
-        msg = "^3QUEUE: ^0" .. tostring(msg) .. "^7"
-        print(msg)
-    end
+function Queue:GetSize()
+    return #Queue.QueueList
+end
+
+function Queue:ConnectingSize()
+    return #Queue.Connecting
+end
+
+function Queue:GetQueueList()
+    return Queue.QueueList
+end
+
+function Queue:GetPlayerList()
+    return Queue.PlayerList
+end
+
+function Queue:GetTempPriorityList()
+    return Queue.TempPriority
+end
+
+function Queue:GetConnectingList()
+    return Queue.Connecting
 end
 
 function Queue:IsInQueue(ids, rtnTbl, bySource, connecting)
-    for genericKey1, genericValue1 in ipairs(connecting and self.Connecting or self.QueueList) do
+    local connList = Queue:GetConnectingList()
+    local queueList = Queue:GetQueueList()
+
+    for genericKey1, genericValue1 in ipairs(connecting and connList or queueList) do
         local inQueue = false
 
         if not bySource then
@@ -92,7 +119,7 @@ function Queue:IsInQueue(ids, rtnTbl, bySource, connecting)
 
         if inQueue then
             if rtnTbl then
-                return genericKey1, connecting and self.Connecting[genericKey1] or self.QueueList[genericKey1]
+                return genericKey1, connecting and connList[genericKey1] or queueList[genericKey1]
             end
 
             return true
@@ -104,16 +131,16 @@ end
 
 function Queue:IsPriority(ids)
     local prio = false
-    local tempPower, tempEnd = self:HasTempPriority(ids)
+    local tempPower, tempEnd = Queue:HasTempPriority(ids)
 
     for _, id in ipairs(ids) do
         id = string_lower(id)
 
-        if self.Priority[id] then prio = self.Priority[id] break end
+        if Queue.Priority[id] then prio = Queue.Priority[id] break end
 
         if string_sub(id, 1, 5) == "steam" then
-            local steamid = self:HexIdToSteamId(id)
-            if self.Priority[steamid] then prio = self.Priority[steamid] break end
+            local steamid = Queue:HexIdToSteamId(id)
+            if Queue.Priority[steamid] then prio = Queue.Priority[steamid] break end
         end
     end
 
@@ -132,11 +159,11 @@ function Queue:HasTempPriority(ids)
     for _, id in pairs(ids) do
         id = string_lower(id)
 
-        if self.TempPriority[id] then return self.TempPriority[id].power, self.TempPriority[id].endTime, id end
+        if Queue.TempPriority[id] then return Queue.TempPriority[id].power, Queue.TempPriority[id].endTime, id end
 
         if string_sub(id, 1, 5) == "steam" then
-            local steamid = self:HexIdToSteamId(id)
-            if self.TempPriority[steamid] then return self.TempPriority[steamid].power, self.TempPriority[steamid].endTime, id end
+            local steamid = Queue:HexIdToSteamId(id)
+            if Queue.TempPriority[steamid] then return Queue.TempPriority[steamid].power, Queue.TempPriority[steamid].endTime, id end
         end
     end
 
@@ -144,13 +171,13 @@ function Queue:HasTempPriority(ids)
 end
 
 function Queue:AddToQueue(ids, connectTime, name, src, deferrals)
-    if self:IsInQueue(ids) then return end
+    if Queue:IsInQueue(ids) then return end
 
     local tmp = {
         source = src,
         ids = ids,
         name = name,
-        priority = self:IsPriority(ids) or (src == "debug" and math_random(0, 15)),
+        priority = Queue:IsPriority(ids) or (src == "debug" and math_random(0, 15)),
         timeout = 0,
         deferrals = deferrals,
         firstconnect = connectTime,
@@ -158,9 +185,10 @@ function Queue:AddToQueue(ids, connectTime, name, src, deferrals)
     }
 
     local _pos = false
-    local queueCount = self:GetSize() + 1
+    local queueCount = Queue:GetSize() + 1
+    local queueList = Queue:GetQueueList()
 
-    for pos, data in ipairs(self.QueueList) do
+    for pos, data in ipairs(queueList) do
         if tmp.priority then
             if not data.priority then
                 _pos = pos
@@ -171,39 +199,41 @@ function Queue:AddToQueue(ids, connectTime, name, src, deferrals)
             end
 
             if _pos then
-                self:DebugPrint(string_format("%s[%s] was prioritized and placed %d/%d in queue", tmp.name, ids[1], _pos, queueCount))
+                Queue:DebugPrint(string_format("%s[%s] was prioritized and placed %d/%d in queue", tmp.name, ids[1], _pos, queueCount))
                 break
             end
         end
     end
 
     if not _pos then
-        _pos = self:GetSize() + 1
-        self:DebugPrint(string_format("%s[%s] was placed %d/%d in queue", tmp.name, ids[1], _pos, queueCount))
+        _pos = Queue:GetSize() + 1
+        Queue:DebugPrint(string_format("%s[%s] was placed %d/%d in queue", tmp.name, ids[1], _pos, queueCount))
     end
 
-    table_insert(self.QueueList, _pos, tmp)
+    table_insert(queueList, _pos, tmp)
 end
 
-function Queue:RemoveFromQueue(ids, bySource)
-    if self:IsInQueue(ids, false, bySource) then
-        local pos, data = self:IsInQueue(ids, true, bySource)
-        table_remove(self.QueueList, pos)
+function Queue:RemoveFromQueue(ids, bySource, byIndex)
+    local queueList = Queue:GetQueueList()
+
+    if byIndex then
+        if queueList[byIndex] then
+            table_remove(queueList, byIndex)
+        end
+
+        return
     end
-end
 
-function Queue:GetSize()
-    return #self.QueueList
-end
-
-function Queue:ConnectingSize()
-    return #self.Connecting
+    if Queue:IsInQueue(ids, false, bySource) then
+        local pos, data = Queue:IsInQueue(ids, true, bySource)
+        table_remove(queueList, pos)
+    end
 end
 
 function Queue:TempSize()
     local count = 0
 
-    for _pos, data in pairs(Queue.QueueList) do
+    for _pos, data in pairs(Queue:GetQueueList()) do
         if Queue:HasTempPriority(data.ids) then count = count +1 end
     end
 
@@ -211,19 +241,29 @@ function Queue:TempSize()
 end
 
 function Queue:IsInConnecting(ids, bySource, refresh)
-    local inConnecting, tbl = self:IsInQueue(ids, refresh and true or false, bySource and true or false, true)
+    local inConnecting, tbl = Queue:IsInQueue(ids, refresh and true or false, bySource and true or false, true)
 
     if not inConnecting then return false end
 
     if refresh and inConnecting and tbl then
-        self.Connecting[inConnecting].timeout = 0
+        Queue:GetConnectingList()[inConnecting].timeout = 0
     end
 
     return true
 end
 
-function Queue:RemoveFromConnecting(ids, bySource)
-    for genericKey1, genericValue1 in ipairs(self.Connecting) do
+function Queue:RemoveFromConnecting(ids, bySource, byIndex)
+    local connList = Queue:GetConnectingList()
+
+    if byIndex then
+        if connList[byIndex] then
+            table_remove(connList, byIndex)
+        end
+
+        return
+    end
+
+    for genericKey1, genericValue1 in ipairs(connList) do
         local inConnecting = false
 
         if not bySource then
@@ -239,7 +279,7 @@ function Queue:RemoveFromConnecting(ids, bySource)
         end
 
         if inConnecting then
-            table_remove(self.Connecting, genericKey1)
+            table_remove(connList, genericKey1)
             return true
         end
     end
@@ -252,25 +292,27 @@ function Queue:AddToConnecting(ids, ignorePos, autoRemove, done)
         if not autoRemove then return end
 
         done(Config.Language.connectingerr)
-        self:RemoveFromConnecting(ids)
-        self:RemoveFromQueue(ids)
-        self:DebugPrint("Player could not be added to the connecting list")
+        Queue:RemoveFromConnecting(ids)
+        Queue:RemoveFromQueue(ids)
+        Queue:DebugPrint("Player could not be added to the connecting list")
     end
 
-    if self:ConnectingSize() + self.PlayerCount + 1 > Queue.MaxPlayers then remove() return false end
+    local connList = Queue:GetConnectingList()
+
+    if Queue:ConnectingSize() + Queue.PlayerCount + 1 > Queue.MaxPlayers then remove() return false end
     
     if ids[1] == "debug" then
-        table_insert(self.Connecting, {source = ids[1], ids = ids, name = ids[1], firstconnect = ids[1], priority = ids[1], timeout = 0})
+        table_insert(connList, {source = ids[1], ids = ids, name = ids[1], firstconnect = ids[1], priority = ids[1], timeout = 0})
         return true
     end
 
-    if self:IsInConnecting(ids) then self:RemoveFromConnecting(ids) end
+    if Queue:IsInConnecting(ids) then Queue:RemoveFromConnecting(ids) end
 
-    local pos, data = self:IsInQueue(ids, true)
+    local pos, data = Queue:IsInQueue(ids, true)
     if not ignorePos and (not pos or pos > 1) then remove() return false end
 
-    table_insert(self.Connecting, data)
-    self:RemoveFromQueue(ids)
+    table_insert(connList, data)
+    Queue:RemoveFromQueue(ids)
 
     return true
 end
@@ -278,13 +320,13 @@ end
 function Queue:GetIds(src)
     local ids = GetPlayerIdentifiers(src)
     local ip = GetPlayerEndpoint(src)
-    
+
     ids = (ids and ids[1]) and ids or (ip and {"ip:" .. ip} or false)
     ids = ids ~= nil and ids or false
 
     if ids and #ids > 1 then
         for k, id in ipairs(ids) do
-            if string_sub(id, 1, 3) == "ip:" then table_remove(ids, k) end
+            if string_sub(id, 1, 3) == "ip:" and not Queue:IsPriority({id}) then table_remove(ids, k) end
         end
     end
 
@@ -329,34 +371,35 @@ function Queue:RemovePriority(id)
 end
 
 function Queue:UpdatePosData(src, ids, deferrals)
-    local pos, data = self:IsInQueue(ids, true)
-    self.QueueList[pos].source = src
-    self.QueueList[pos].ids = ids
-    self.QueueList[pos].timeout = 0
-    self.QueueList[pos].firstconnect = os_time()
-    self.QueueList[pos].name = GetPlayerName(src)
-    self.QueueList[pos].deferrals = deferrals
+    local pos, data = Queue:IsInQueue(ids, true)
+    data.source = src
+    data.ids = ids
+    data.timeout = 0
+    data.firstconnect = os_time()
+    data.name = GetPlayerName(src)
+    data.deferrals = deferrals
 end
 
 function Queue:NotFull(firstJoin)
-    local canJoin = self.PlayerCount + self:ConnectingSize() < Queue.MaxPlayers
-    if firstJoin and canJoin then canJoin = self:GetSize() <= 1 end
+    local canJoin = Queue.PlayerCount + Queue:ConnectingSize() < Queue.MaxPlayers
+    if firstJoin and canJoin then canJoin = Queue:GetSize() <= 1 end
     return canJoin
 end
 
 function Queue:SetPos(ids, newPos)
-    local pos, data = self:IsInQueue(ids, true)
+    if newPos <= 0 or newPos > Queue:GetSize() then return false end
 
-    table_remove(self.QueueList, pos)
-    table_insert(self.QueueList, newPos, data)
+    local pos, data = Queue:IsInQueue(ids, true)
+    local queueList = Queue:GetQueueList()
 
-    Queue:DebugPrint("Set " .. data.name .. "[" .. data.ids[1] .. "] pos to " .. newPos)
+    table_remove(queueList, pos)
+    table_insert(queueList, newPos, data)
 end
 
 function Queue:CanJoin(src, cb)
     local allow = true
 
-    for _, data in ipairs(self.JoinCbs) do
+    for _, data in ipairs(Queue.JoinCbs) do
         local await = true
 
         data.func(src, function(reason)
@@ -505,7 +548,7 @@ local function playerConnect(name, setKickReason, deferrals)
     local pos, data = Queue:IsInQueue(ids, true)
     
     if not pos or not data then
-        done(Config.Language.err .. " [3]")
+        done(Config.Language.err .. " [1]")
 
         Queue:RemoveFromQueue(ids)
         Queue:RemoveFromConnecting(ids)
@@ -554,8 +597,8 @@ local function playerConnect(name, setKickReason, deferrals)
             return
         end
 
-        local lastMsg = GetPlayerLastMsg(data.source)
-        if lastMsg >= 30000 then data.timeout = data.timeout + 0.5 else data.timeout = 0 end
+        local endPoint = GetPlayerEndpoint(data.source)
+        if not endPoint then data.timeout = data.timeout + 0.5 else data.timeout = 0 end
 
         if data.timeout >= Config.QueueTimeOut and os_time() - connectTime > 5 then
             remove("Removed due to timeout")
@@ -600,7 +643,7 @@ Citizen.CreateThread(function()
             Queue:RemoveFromQueue(data.source, true)
             Queue:RemoveFromConnecting(data.source, true)
         elseif pos then
-            table_remove(Queue.QueueList, pos)
+            table_remove(Queue:GetQueueList(), pos)
         end
     end
 
@@ -610,13 +653,13 @@ Citizen.CreateThread(function()
         local i = 1
     
         while i <= Queue:ConnectingSize() do
-            local data = Queue.Connecting[i]
+            local data = Queue:GetConnectingList()[i]
     
-            local lastMsg = GetPlayerLastMsg(data.source)
+            local endPoint = GetPlayerEndpoint(data.source)
     
             data.timeout = data.timeout + 1
     
-            if ((data.timeout >= 300 and lastMsg >= 60000) or data.timeout >= Config.ConnectTimeOut) and data.source ~= "debug" and os_time() - data.firstconnect > 5 then
+            if ((data.timeout >= 300 and not endPoint) or data.timeout >= Config.ConnectTimeOut) and data.source ~= "debug" and os_time() - data.firstconnect > 5 then
                 remove(data)
                 Queue:DebugPrint(data.name .. "[" .. data.ids[1] .. "] was removed from the connecting queue because they timed out")
             else
@@ -703,32 +746,35 @@ commands.addq = function()
 end
 
 commands.removeq = function(args)
-    Queue:DebugPrint("REMOVED " .. Queue.QueueList[tonumber(args[1])].name .. " FROM THE QUEUE")
-    table_remove(Queue.QueueList, args[1])
-    testAdds = testAdds + 1
+    Queue:RemoveFromQueue(nil, nil, tonumber(args[1]))
+    local name = Queue:GetQueueList()[args[1]] and Queue:GetQueueList()[args[1]].name or nil
+    Queue:DebugPrint("REMOVED " .. tostring(name) .. " FROM THE QUEUE")
 end
 
 commands.printq = function()
     Queue:DebugPrint("CURRENT QUEUE LIST")
-    for pos, data in ipairs(Queue.QueueList) do
+
+    for pos, data in ipairs(Queue:GetQueueList()) do
         Queue:DebugPrint(pos .. ": [src: " .. data.source .. "] " .. data.name .. "[" .. data.ids[1] .. "] | Priority: " .. (tostring(data.priority and data.priority or false)) .. " | Last Msg: " .. (data.source ~= "debug" and GetPlayerLastMsg(data.source) or "debug") .. " | Timeout: " .. data.timeout .. " | Queue Time: " .. data.queuetime() .. " Seconds")
     end
 end
 
 commands.addc = function()
-    Queue:DebugPrint("ADDED DEBUG CONNECTING QUEUE")
     Queue:AddToConnecting({"debug"})
+    Queue:DebugPrint("ADDED DEBUG CONNECTING QUEUE")
 end
 
 commands.removec = function(args)
-    Queue:DebugPrint("REMOVED DEBUG CONNECTING QUEUE")
     if not args[1] then return end
-    table_remove(Queue.Connecting, args[1])
+    Queue:RemoveFromConnecting(nil, nil, tonumber(args[1]))
+    local name = Queue:GetConnectingList()[args[1]] and Queue:GetConnectingList()[args[1]].name or nil
+    Queue:DebugPrint("REMOVED " .. tostring(name) .. " FROM THE CONNECTING LIST")
 end
 
 commands.printc = function()
     Queue:DebugPrint("CURRENT CONNECTING LIST")
-    for pos, data in ipairs(Queue.Connecting) do
+
+    for pos, data in ipairs(Queue:GetConnectingList()) do
         Queue:DebugPrint(pos .. ": [src: " .. data.source .. "] " .. data.name .. "[" .. data.ids[1] .. "] | Priority: " .. (tostring(data.priority and data.priority or false)) .. " | Last Msg: " .. (data.source ~= "debug" and GetPlayerLastMsg(data.source) or "debug") .. " | Timeout: " .. data.timeout)
     end
 end
@@ -741,6 +787,7 @@ end
 
 commands.printp = function()
     Queue:DebugPrint("CURRENT PRIORITY LIST")
+
     for id, power in pairs(Queue.Priority) do
         Queue:DebugPrint(id .. ": " .. tostring(power))
     end
@@ -752,6 +799,7 @@ end
 
 commands.printtp = function()
     Queue:DebugPrint("CURRENT TEMP PRIORITY LIST")
+
     for k, data in pairs(Queue.TempPriority) do
         Queue:DebugPrint(k .. ": Power: " .. tostring(data.power) .. " | EndTime: " .. tostring(data.endTime) .. " | CurTime: " .. tostring(os_time()))
     end
@@ -759,35 +807,44 @@ end
 
 commands.removetp = function(args)
     if not args[1] then return end
+
     Queue.TempPriority[args[1]] = nil
     Queue:DebugPrint("REMOVED " .. args[1] .. " FROM THE TEMP PRIORITY LIST")
 end
 
 commands.setpos = function(args)
     if not args[1] or not args[2] then return end
+
     args[1], args[2] = tonumber(args[1]), tonumber(args[2])
-    Queue:DebugPrint("SET " .. Queue.QueueList[args[1]].name .. "'s' QUEUE POSITION TO: " .. args[2])
-    local ids = Queue.QueueList[args[1]].ids
-    Queue:SetPos(ids, args[2])
+
+    local data = Queue:GetQueueList()[args[1]]
+
+    Queue:SetPos(data.ids, args[2])
+
+    Queue:DebugPrint("SET " .. data.name .. "'s QUEUE POSITION TO: " .. args[2])
 end
 
 commands.setdata = function(args)
     if not args[1] or not args[2] or not args[3] then return end
+    args[1] = tonumber(args[1])
+
     local num = tonumber(args[3])
+    local data = Queue:GetQueueList()[args[1]]
 
     if args[2] == "queuetime" then
-        local time = Queue.QueueList[tonumber(args[1])].queuetime()
+        local time = data.queuetime()
         local dif = time - num
-        Queue.QueueList[tonumber(args[1])].firstconnect = Queue.QueueList[tonumber(args[1])].firstconnect + dif
-        Queue.QueueList[tonumber(args[1])].queuetime = function() return (os_time() - Queue.QueueList[tonumber(args[1])].firstconnect) end
+
+        data.firstconnect = data.firstconnect + dif
+        data.queuetime = function() return (os_time() - data.firstconnect) end
     else
-        Queue.QueueList[tonumber(args[1])][args[2]] = num and num or args[3]
+        data[args[2]] = num and num or args[3]
     end
 
-    Queue:DebugPrint("SET " .. Queue.QueueList[tonumber(args[1])].name .. "'s " .. args[2] .. " DATA TO " .. args[3])
+    Queue:DebugPrint("SET " .. data.name .. "'s " .. args[2] .. " DATA TO " .. args[3])
 end
 
-commands.printcommands = function()
+commands.commands = function()
     for cmd, func in pairs(commands) do
         Queue:DebugPrint(tostring(cmd))
     end
