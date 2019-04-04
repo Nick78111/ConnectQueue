@@ -25,7 +25,7 @@ Config.DisableHardCap = true
 Config.ConnectTimeOut = 600
 
 -- will remove players from queue if the server doesn't recieve a message from them within: __ seconds
-Config.QueueTimeOut = 60
+Config.QueueTimeOut = 90
 
 -- will give players temporary priority when they disconnect and when they start loading in
 Config.EnableGrace = false
@@ -37,7 +37,7 @@ Config.GracePower = 5
 Config.GraceTime = 480
 
 -- will show how many people have temporary priority in the connection message
-Config.ShowTemp = true
+Config.ShowTemp = false
 
 -- simple localization
 Config.Language = {
