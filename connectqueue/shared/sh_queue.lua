@@ -28,6 +28,7 @@ _Queue.Priority = {}
 _Queue.Connecting = {}
 _Queue.JoinCbs = {}
 _Queue.TempPriority = {}
+_Queue.JoinDelay = GetGameTimer() + Config.JoinDelay and Config.JoinDelay or 0
 
 local tostring = tostring
 local tonumber = tonumber
@@ -571,7 +572,7 @@ local function playerConnect(name, setKickReason, deferrals)
         return
     end
 
-    if Queue:NotFull(true) then
+    if Queue:NotFull(true) and _Queue.JoinDelay <= GetGameTimer() then
         -- let them in the server
         local added = Queue:AddToConnecting(ids, true, true, done)
         if not added then CancelEvent() return end
@@ -620,7 +621,7 @@ local function playerConnect(name, setKickReason, deferrals)
             return
         end
 
-        if pos <= 1 and Queue:NotFull() then
+        if pos <= 1 and Queue:NotFull() and _Queue.JoinDelay <= GetGameTimer() then
             -- let them in the server
             local added = Queue:AddToConnecting(ids)
 

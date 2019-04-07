@@ -36,6 +36,10 @@ Config.GracePower = 5
 -- how long grace time lasts in seconds
 Config.GraceTime = 480
 
+-- on resource start, players can join the queue but will not let them join for __ milliseconds
+-- this will let the queue settle and lets other resources finish initializing
+Config.JoinDelay = 30000
+
 -- will show how many people have temporary priority in the connection message
 Config.ShowTemp = false
 
