@@ -37,6 +37,7 @@ local pairs = pairs
 local print = print
 local string_len = string.len
 local string_sub = string.sub
+local string_find = string.find
 local string_format = string.format
 local string_lower = string.lower
 local math_abs = math.abs
@@ -71,6 +72,16 @@ end
 function Queue:IsSteamRunning(src)
     for _, id in ipairs(GetPlayerIdentifiers(src)) do
         if string_sub(id, 1, 5) == "steam" then
+            return true
+        end
+    end
+    
+    return false
+end
+
+function Queue:IsDiscordRunning(src)
+    for _, id in ipairs(GetPlayerIdentifiers(src)) do
+        if string_find(id, "discord:") then
             return true
         end
     end
@@ -496,6 +507,13 @@ local function playerConnect(name, setKickReason, deferrals)
     if Config.RequireSteam and not Queue:IsSteamRunning(src) then
         -- prevent joining
         done(Config.Language.steam)
+        CancelEvent()
+        return
+    end
+
+    if Config.RequireDiscord and not Queue:IsDiscordRunning(src) then
+        -- prevent joining
+        done(Config.Language.discord)
         CancelEvent()
         return
     end
