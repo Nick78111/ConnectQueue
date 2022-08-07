@@ -12,6 +12,9 @@ Config.Priority = {
 -- require people to run steam
 Config.RequireSteam = false
 
+-- require people to have discord linked
+Config.RequireDiscord = false
+
 -- "whitelist" only server
 Config.PriorityOnly = false
 
@@ -53,5 +56,6 @@ Config.Language = {
     connectingerr = "\xE2\x9D\x97[Queue] Error: Error adding you to connecting list",
     timedout = "\xE2\x9D\x97[Queue] Error: Timed out?",
     wlonly = "\xE2\x9D\x97[Queue] You must be whitelisted to join this server",
-    steam = "\xE2\x9D\x97 [Queue] Error: Steam must be running"
+    steam = "\xE2\x9D\x97 [Queue] Error: Steam must be running",
+    discord = "\xE2\x9D\x97 [Queue] Error: Discord must be linked to FiveM",
 }
