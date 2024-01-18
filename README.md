@@ -48,6 +48,26 @@ Queue.OnJoin(function(source, allow)
     allow("No, you can't join")
 end)
 ```
+### Discord priority start
+### Add following lines in your server.cfg file
+
+```Lua
+set sb:discordBotToken "your bot token here" -- make sure bot has SERVER MEMBERS INTENT, PRESENCE INTENT and MESSAGE CONTENT INTENT enabled
+set sb:discordGuildId "your discord server id"      -- our discord server id
+```
+
+## Add Discord Role as per priority power
+```Lua
+
+Config.PriorityRoles = { --  ["DISCORD_ROLE_ID"] = POWER,
+    ["1186549704318799924"] = 30,  -- Prio 3
+    ["1186549286146678844"] = 20,  -- Prio 2
+    ["1186549574081466408"] = 10,  -- Prio 1
+}
+
+```
+### Discord priority end
+
 
 ## AddPriority
 Call this to add an identifier to the priority list.
