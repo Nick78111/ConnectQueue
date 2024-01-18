@@ -13,7 +13,7 @@ end
 
 local Queue = {}
 -- EDIT THESE IN SERVER.CFG + OTHER OPTIONS IN CONFIG.LUA
-Queue.MaxPlayers = GetConvarInt("sv_maxclients", 30)
+Queue.MaxPlayers = GetConvarInt("sv_maxclients", 90)
 Queue.Debug = GetConvar("sv_debugqueue", "true") == "true" and true or false
 Queue.DisplayQueue = GetConvar("sv_displayqueue", "true") == "true" and true or false
 Queue.InitHostName = GetConvar("sv_hostname")
@@ -25,6 +25,7 @@ _Queue.QueueList = {}
 _Queue.PlayerList = {}
 _Queue.PlayerCount = 0
 _Queue.Priority = {}
+_Queue.PriorityRoles = {}
 _Queue.Connecting = {}
 _Queue.JoinCbs = {}
 _Queue.TempPriority = {}
@@ -50,6 +51,10 @@ Queue.InitHostName = Queue.InitHostName ~= "default FXServer" and Queue.InitHost
 
 for id, power in pairs(Config.Priority) do
     _Queue.Priority[string_lower(id)] = power
+end
+
+for id, power in pairs(Config.PriorityRoles) do
+    _Queue.PriorityRoles[string_lower(id)] = power
 end
 
 function Queue:DebugPrint(msg)
@@ -78,6 +83,15 @@ function Queue:IsSteamRunning(src)
     return false
 end
 
+function Queue:IsDiscordRunning(src)
+    for _, id in ipairs(GetPlayerIdentifiers(src)) do
+        if string_sub(id, 1, 7) == "discord" then
+            return id
+        end
+    end
+    return false
+end
+
 function Queue:GetPlayerCount()
     return _Queue.PlayerCount
 end
@@ -93,6 +107,20 @@ end
 function Queue:GetQueueList()
     return _Queue.QueueList
 end
+
+-- function Queue:GetPriorityList()
+
+--     local nowtimestamp = os.time()
+--     local nowttime = os.date('%Y-%m-%d %H:%M:%S', nowtimestamp)
+--     exports.oxmysql:execute('SELECT * FROM `sbadmin_priority` WHERE valid >= ? AND status = ?', {nowttime, '1'}, function(results)
+--         if results[1] then
+--             for _, v in pairs(results) do
+--                 _Queue.Priority[v.steam] = v.power
+--             end
+--         end
+--     end)
+--     return _Queue.Priority
+-- end
 
 function Queue:GetPriorityList()
     return _Queue.Priority
@@ -333,24 +361,17 @@ function Queue:AddToConnecting(ids, ignorePos, autoRemove, done)
 end
 
 function Queue:GetIds(src)
-    local ids = GetPlayerIdentifiers(src)
-    local ip = GetPlayerEndpoint(src)
-
-    ids = (ids and ids[1]) and ids or (ip and {"ip:" .. ip} or false)
-    ids = ids ~= nil and ids or false
-
-    if ids and #ids > 1 then
-        for k, id in ipairs(ids) do
-            if string_sub(id, 1, 3) == "ip:" and not Queue:IsPriority({id}) then table_remove(ids, k) end
+    local ids = {}
+    for _, id in ipairs(GetPlayerIdentifiers(src)) do
+        if string_sub(id, 1, 7) == "discord" then
+            ids = {id}
         end
     end
-
     return ids
 end
 
 function Queue:AddPriority(id, power, temp)
     if not id then return false end
-
     if type(id) == "table" then
         for _id, power in pairs(id) do
             if _id and type(_id) == "string" and power and type(power) == "number" then
@@ -360,10 +381,8 @@ function Queue:AddPriority(id, power, temp)
                 return false
             end
         end
-
         return true
     end
-
     power = (power and type(power) == "number") and power or 10
 
     if temp then
@@ -374,7 +393,6 @@ function Queue:AddPriority(id, power, temp)
     else
         Queue:GetPriorityList()[string_lower(id)] = power
     end
-    
     return true
 end
 
@@ -443,12 +461,42 @@ end)
 
 local function playerConnect(name, setKickReason, deferrals)
     local src = source
-    local ids = Queue:GetIds(src)
+    local ids = {}
     local name = GetPlayerName(src)
     local connectTime = os_time()
     local connecting = true
-
+    local discordId = nil
     deferrals.defer()
+    discordId = Queue:IsDiscordRunning(src)
+    if not discordId then
+        deferrals.done(tostring(Config.Language.discord) or "Discord must be running in background")
+        CancelEvent()
+        return
+    else
+        ids = Queue:GetIds(src)
+        if not Config.Priority[discordId] then
+            local roles = nil
+            roles = GetDiscordRoles(src)
+            local priority = 0
+            for _, role in ipairs(roles) do
+                if _Queue.PriorityRoles[role] then
+                    _Queue.Priority[discordId] = _Queue.PriorityRoles[role]
+                    Queue:DebugPrint("Addedd in to queue priority " .. discordId .. " with power ".._Queue.Priority[discordId])
+                    break;
+                end
+            end
+            while not roles do
+                Wait(100)
+            end
+        end
+    end
+	Wait(1000)
+	if Config.AntiSpam then
+		for i=Config.AntiSpamTimer,0,-1 do
+			deferrals.update(string.format(Config.PleaseWait, i))
+			Citizen.Wait(1000)
+		end
+	end
 
     Citizen.CreateThread(function()
         while connecting do
@@ -487,16 +535,9 @@ local function playerConnect(name, setKickReason, deferrals)
 
     if not ids then
         -- prevent joining
-        done(Config.Language.iderr)
+        done(Config.Language.idrr)
         CancelEvent()
         Queue:DebugPrint("Dropped " .. name .. ", couldn't retrieve any of their id's")
-        return
-    end
-
-    if Config.RequireSteam and not Queue:IsSteamRunning(src) then
-        -- prevent joining
-        done(Config.Language.steam)
-        CancelEvent()
         return
     end
 
@@ -650,6 +691,7 @@ local function playerConnect(name, setKickReason, deferrals)
         update(msg, data.deferrals)
     end
 end
+
 AddEventHandler("playerConnecting", playerConnect)
 
 Citizen.CreateThread(function()
@@ -688,12 +730,12 @@ Citizen.CreateThread(function()
             end
         end
     
-        Queue.MaxPlayers = GetConvarInt("sv_maxclients", 30)
+        Queue.MaxPlayers = GetConvarInt("sv_maxclients", 90)
         Queue.Debug = GetConvar("sv_debugqueue", "true") == "true" and true or false
         Queue.DisplayQueue = GetConvar("sv_displayqueue", "true") == "true" and true or false
 
         local qCount = Queue:GetSize()
-
+        SetConvarServerInfo("queue", tostring(qCount))
         if Queue.DisplayQueue then
             if Queue.InitHostName then
                 SetConvar("sv_hostname", (qCount > 0 and "[" .. tostring(qCount) .. "] " or "") .. Queue.InitHostName)

@@ -1,5 +1,7 @@
 fx_version 'bodacious'
-game 'gta5'
+game 'common'
+
+server_script "discordapi.lua"
 
 server_script "server/sv_queue_config.lua"
 server_script "connectqueue.lua"
